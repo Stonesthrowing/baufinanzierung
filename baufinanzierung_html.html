@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baufinanzierungsrechner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        const BaufinanzierungsRechner = () => {
+          // Funktion zum Dekodieren der URL-Parameter
+          const loadFromURL = () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('data')) {
+              try {
+                const decoded = atob(params.get('data'));
+                return JSON.parse(decoded);
+              } catch (e) {
+                console.error('Fehler beim Laden der URL-Parameter:', e);
+                return null;
+              }
+            }
+            return null;
+          };
+
+          const urlData = loadFromURL();
+
+          // Lade gespeicherte Werte aus localStorage oder URL oder nutze Defaults
+          const loadFromStorage = (key, defaultValue) => {
+            if (urlData && urlData[key] !== undefined) {
+              return urlData[key];
+            }
+            const saved = localStorage.getItem(key);
+            return saved !== null ? JSON.parse(saved) : defaultValue;
+          };
+
+          const [darlehenssumme, setDarlehenssumme] = useState(() => loadFromStorage('darlehenssumme', 376000));
+          const [zinssatz1, setZinssatz1] = useState(() => loadFromStorage('zinssatz1', 3.52));
+          const [zinsbindung, setZinsbindung] = useState(() => loadFromStorage('zinsbindung', 10));
+          const [zinssatz2, setZinssatz2] = useState(() => loadFromStorage('zinssatz2', 3.52));
+          const [tilgungsart, setTilgungsart] = useState(() => loadFromStorage('tilgungsart', 'rate'));
+          const [tilgungssatz, setTilgungssatz] = useState(() => loadFromStorage('tilgungssatz', 2.0));
+          const [monatsrate, setMonatsrate] = useState(() => loadFromStorage('monatsrate', 1651.27));
+          const [startdatum, setStartdatum] = useState(() => loadFromStorage('startdatum', '2023-04-01'));
+          const [sondertilgungen, setSondertilgungen] = useState(() => loadFromStorage('sondertilgungen', []));
+          const [neueST, setNeueST] = useState({ datum: '', betrag: '' });
+          const [ratenanpassungen, setRatenanpassungen] = useState(() => loadFromStorage('ratenanpassungen', []));
+          const [neueRA, setNeueRA] = useState({ datum: '', neueRate: '' });
+          const [showCopyNotification, setShowCopyNotification] = useState(false);
+
+          // Speichere Werte in localStorage bei Änderungen
+          useEffect(() => {
+            localStorage.setItem('darlehenssumme', JSON.stringify(darlehenssumme));
+          }, [darlehenssumme]);
+
+          useEffect(() => {
+            localStorage.setItem('zinssatz1', JSON.stringify(zinssatz1));
+          }, [zinssatz1]);
+
+          useEffect(() => {
+            localStorage.setItem('zinsbindung', JSON.stringify(zinsbindung));
+          }, [zinsbindung]);
+
+          useEffect(() => {
+            localStorage.setItem('zinssatz2', JSON.stringify(zinssatz2));
+          }, [zinssatz2]);
+
+          useEffect(() => {
+            localStorage.setItem('tilgungsart', JSON.stringify(tilgungsart));
+          }, [tilgungsart]);
+
+          useEffect(() => {
+            localStorage.setItem('tilgungssatz', JSON.stringify(tilgungssatz));
+          }, [tilgungssatz]);
+
+          useEffect(() => {
+            localStorage.setItem('monatsrate', JSON.stringify(monatsrate));
+          }, [monatsrate]);
+
+          useEffect(() => {
+            localStorage.setItem('startdatum', JSON.stringify(startdatum));
+          }, [startdatum]);
+
+          useEffect(() => {
+            localStorage.setItem('sondertilgungen', JSON.stringify(sondertilgungen));
+          }, [sondertilgungen]);
+
+          useEffect(() => {
+            localStorage.setItem('ratenanpassungen', JSON.stringify(ratenanpassungen));
+          }, [ratenanpassungen]);
+
+          const addSondertilgung = () => {
+            if (neueST.datum && neueST.betrag && parseFloat(neueST.betrag) > 0) {
+              setSondertilgungen([...sondertilgungen, {
+                datum: neueST.datum,
+                betrag: parseFloat(neueST.betrag)
+              }].sort((a, b) => new Date(a.datum) - new Date(b.datum)));
+              setNeueST({ datum: '', betrag: '' });
+            }
+          };
+
+          const removeSondertilgung = (index) => {
+            setSondertilgungen(sondertilgungen.filter((_, i) => i !== index));
+          };
+
+          const addRatenanpassung = () => {
+            if (neueRA.datum && neueRA.neueRate && parseFloat(neueRA.neueRate) > 0) {
+              setRatenanpassungen([...ratenanpassungen, {
+                datum: neueRA.datum,
+                neueRate: parseFloat(neueRA.neueRate)
+              }].sort((a, b) => new Date(a.datum) - new Date(b.datum)));
+              setNeueRA({ datum: '', neueRate: '' });
+            }
+          };
+
+          const removeRatenanpassung = (index) => {
+            setRatenanpassungen(ratenanpassungen.filter((_, i) => i !== index));
+          };
+
+          // Funktion zum Teilen via URL
+          const shareViaURL = () => {
+            const data = {
+              darlehenssumme,
+              zinssatz1,
+              zinsbindung,
+              zinssatz2,
+              tilgungsart,
+              tilgungssatz,
+              monatsrate,
+              startdatum,
+              sondertilgungen,
+              ratenanpassungen
+            };
+            const encoded = btoa(JSON.stringify(data));
+            const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`;
+            
+            navigator.clipboard.writeText(url).then(() => {
+              setShowCopyNotification(true);
+              setTimeout(() => setShowCopyNotification(false), 3000);
+            }).catch(err => {
+              // Fallback für ältere Browser
+              const textArea = document.createElement('textarea');
+              textArea.value = url;
+              document.body.appendChild(textArea);
+              textArea.select();
+              document.execCommand('copy');
+              document.body.removeChild(textArea);
+              setShowCopyNotification(true);
+              setTimeout(() => setShowCopyNotification(false), 3000);
+            });
+          };
+
+          const berechnung = useMemo(() => {
+            const start = new Date(startdatum);
+            let restschuld = darlehenssumme;
+            const monate = [];
+            let monat = 0;
+            let gesamtZinsen = 0;
+            let gesamtTilgung = 0;
+            let gesamtSondertilgungen = 0;
+
+            let rate;
+            let anfangsrate;
+            if (tilgungsart === 'prozent') {
+              const jahresrate = darlehenssumme * (zinssatz1 + tilgungssatz) / 100;
+              rate = jahresrate / 12;
+              anfangsrate = rate;
+            } else {
+              rate = monatsrate;
+              anfangsrate = monatsrate;
+            }
+
+            let gesamtRatendifferenz = 0;
+
+            while (restschuld > 0 && monat < 600) {
+              const aktuellesDatum = new Date(start);
+              aktuellesDatum.setMonth(start.getMonth() + monat);
+              
+              const jahreVerstrichen = monat / 12;
+              const aktuellerZinssatz = jahreVerstrichen < zinsbindung ? zinssatz1 : zinssatz2;
+              
+              const monatString = aktuellesDatum.toISOString().slice(0, 7);
+              const ratenanpassung = ratenanpassungen.find(ra => ra.datum.slice(0, 7) === monatString);
+              if (ratenanpassung && tilgungsart === 'rate') {
+                rate = ratenanpassung.neueRate;
+              }
+              
+              const zinsen = restschuld * (aktuellerZinssatz / 100 / 12);
+              
+              if (monat === zinsbindung * 12 && tilgungsart === 'prozent') {
+                const jahresrate = restschuld * (aktuellerZinssatz + tilgungssatz) / 100;
+                rate = jahresrate / 12;
+              }
+              
+              const ratendifferenz = rate - anfangsrate;
+              gesamtRatendifferenz += ratendifferenz;
+              
+              let tilgung = Math.min(rate - zinsen, restschuld);
+              if (tilgung < 0) tilgung = 0;
+              
+              const sondertilgung = sondertilgungen
+                .filter(st => st.datum.slice(0, 7) === monatString)
+                .reduce((sum, st) => sum + st.betrag, 0);
+              
+              const effektiveSondertilgung = Math.min(sondertilgung, restschuld - tilgung);
+              
+              restschuld = restschuld - tilgung - effektiveSondertilgung;
+              
+              if (restschuld < 0.01) restschuld = 0;
+              
+              gesamtZinsen += zinsen;
+              gesamtTilgung += tilgung;
+              gesamtSondertilgungen += effektiveSondertilgung;
+              
+              const datumString = `${String(aktuellesDatum.getMonth() + 1).padStart(2, '0')}.${aktuellesDatum.getFullYear()}`;
+              const hatRatenanpassung = ratenanpassungen.some(ra => ra.datum.slice(0, 7) === monatString);
+              
+              monate.push({
+                monat: monat + 1,
+                datum: datumString,
+                zinssatz: aktuellerZinssatz,
+                rate: rate,
+                zinsen: zinsen,
+                tilgung: tilgung,
+                sondertilgung: effektiveSondertilgung,
+                restschuld: restschuld,
+                hatRatenanpassung: hatRatenanpassung
+              });
+              
+              monat++;
+              
+              if (restschuld === 0) break;
+            }
+
+            const laufzeitJahre = Math.floor(monat / 12);
+            const laufzeitMonate = monat % 12;
+            
+            let restschuldOhne = darlehenssumme;
+            let monatOhne = 0;
+            let gesamtZinsenOhne = 0;
+            let rateOhne = anfangsrate;
+
+            while (restschuldOhne > 0 && monatOhne < 600) {
+              const jahreVerstrichenOhne = monatOhne / 12;
+              const aktuellerZinssatzOhne = jahreVerstrichenOhne < zinsbindung ? zinssatz1 : zinssatz2;
+              
+              const zinsenOhne = restschuldOhne * (aktuellerZinssatzOhne / 100 / 12);
+              
+              if (monatOhne === zinsbindung * 12 && tilgungsart === 'prozent') {
+                const jahresrateOhne = restschuldOhne * (aktuellerZinssatzOhne + tilgungssatz) / 100;
+                rateOhne = jahresrateOhne / 12;
+              }
+              
+              let tilgungOhne = Math.min(rateOhne - zinsenOhne, restschuldOhne);
+              if (tilgungOhne < 0) tilgungOhne = 0;
+              
+              restschuldOhne = restschuldOhne - tilgungOhne;
+              if (restschuldOhne < 0.01) restschuldOhne = 0;
+              
+              gesamtZinsenOhne += zinsenOhne;
+              monatOhne++;
+              
+              if (restschuldOhne === 0) break;
+            }
+
+            const zinsersparnisSondertilgung = gesamtZinsenOhne - gesamtZinsen;
+            const laufzeitVerkuerzungMonate = monatOhne - monat;
+            
+            let restschuldOhneRaten = darlehenssumme;
+            let monatOhneRaten = 0;
+            let gesamtZinsenOhneRaten = 0;
+            let rateOhneAnpassung = anfangsrate;
+
+            while (restschuldOhneRaten > 0 && monatOhneRaten < 600) {
+              const aktuelleDatumOR = new Date(start);
+              aktuelleDatumOR.setMonth(start.getMonth() + monatOhneRaten);
+              
+              const jahreVerstrichenOR = monatOhneRaten / 12;
+              const aktuellerZinssatzOR = jahreVerstrichenOR < zinsbindung ? zinssatz1 : zinssatz2;
+              
+              const zinsenOR = restschuldOhneRaten * (aktuellerZinssatzOR / 100 / 12);
+              
+              if (monatOhneRaten === zinsbindung * 12 && tilgungsart === 'prozent') {
+                const jahresrateOR = restschuldOhneRaten * (aktuellerZinssatzOR + tilgungssatz) / 100;
+                rateOhneAnpassung = jahresrateOR / 12;
+              }
+              
+              let tilgungOR = Math.min(rateOhneAnpassung - zinsenOR, restschuldOhneRaten);
+              if (tilgungOR < 0) tilgungOR = 0;
+              
+              const monatStringOR = aktuelleDatumOR.toISOString().slice(0, 7);
+              const sondertilgungOR = sondertilgungen
+                .filter(st => st.datum.slice(0, 7) === monatStringOR)
+                .reduce((sum, st) => sum + st.betrag, 0);
+              
+              const effektiveSondertilgungOR = Math.min(sondertilgungOR, restschuldOhneRaten - tilgungOR);
+              
+              restschuldOhneRaten = restschuldOhneRaten - tilgungOR - effektiveSondertilgungOR;
+              if (restschuldOhneRaten < 0.01) restschuldOhneRaten = 0;
+              
+              gesamtZinsenOhneRaten += zinsenOR;
+              monatOhneRaten++;
+              
+              if (restschuldOhneRaten === 0) break;
+            }
+
+            const zinsersparnis = gesamtZinsenOhne - gesamtZinsen;
+            const zinsersparnisDurchRatenanpassung = gesamtZinsenOhneRaten - gesamtZinsen;
+            const gesamtersparnis = zinsersparnis;
+            
+            return {
+              monate,
+              gesamtZinsen,
+              gesamtTilgung,
+              gesamtSondertilgungen,
+              gesamtAufwand: gesamtZinsen + darlehenssumme,
+              laufzeitJahre,
+              laufzeitMonate,
+              laufzeitGesamt: monat,
+              zinsersparnis,
+              zinsersparnisSondertilgung,
+              zinsersparnisDurchRatenanpassung,
+              gesamtersparnis,
+              laufzeitVerkuerzungMonate,
+              gesamtZinsenOhne,
+              anfangsrate,
+              rateneffekt: gesamtRatendifferenz
+            };
+          }, [darlehenssumme, zinssatz1, zinsbindung, zinssatz2, tilgungsart, tilgungssatz, monatsrate, startdatum, sondertilgungen, ratenanpassungen]);
+
+          const exportToCSV = () => {
+            let csv = 'Monat;Datum;Zinssatz %;Rate €;Zinsen €;Tilgung €;Sondertilgung €;Restschuld €\n';
+            berechnung.monate.forEach(m => {
+              csv += `${m.monat};${m.datum};${m.zinssatz.toFixed(2)};${m.rate.toFixed(2)};${m.zinsen.toFixed(2)};${m.tilgung.toFixed(2)};${m.sondertilgung.toFixed(2)};${m.restschuld.toFixed(2)}\n`;
+            });
+            
+            csv += '\n\nZusammenfassung\n';
+            csv += `Darlehenssumme;${darlehenssumme.toFixed(2)} €\n`;
+            csv += `Gesamte Zinsen;${berechnung.gesamtZinsen.toFixed(2)} €\n`;
+            csv += `Gesamte Tilgung;${berechnung.gesamtTilgung.toFixed(2)} €\n`;
+            csv += `Gesamte Sondertilgungen;${berechnung.gesamtSondertilgungen.toFixed(2)} €\n`;
+            csv += `Gesamtaufwand;${berechnung.gesamtAufwand.toFixed(2)} €\n`;
+            csv += `Laufzeit;${berechnung.laufzeitJahre} Jahre ${berechnung.laufzeitMonate} Monate\n`;
+            if (berechnung.gesamtSondertilgungen > 0) {
+              csv += `\nEinsparung durch Sondertilgungen\n`;
+              csv += `Zinsersparnis;${berechnung.zinsersparnisSondertilgung.toFixed(2)} €\n`;
+              csv += `Laufzeitverkürzung;${Math.floor(berechnung.laufzeitVerkuerzungMonate / 12)} Jahre ${berechnung.laufzeitVerkuerzungMonate % 12} Monate\n`;
+            }
+            if (ratenanpassungen.length > 0 && tilgungsart === 'rate') {
+              csv += `\n${berechnung.zinsersparnisDurchRatenanpassung > 0 ? 'Einsparung' : 'Mehrkosten'} durch Monatsratenanpassung\n`;
+              csv += `Zinsersparnis;${berechnung.zinsersparnisDurchRatenanpassung.toFixed(2)} €\n`;
+            }
+            if (berechnung.gesamtSondertilgungen > 0 || (ratenanpassungen.length > 0 && tilgungsart === 'rate')) {
+              csv += `\nGesamteinsparung (Sondertilgung + Ratenanpassung);${berechnung.gesamtersparnis.toFixed(2)} €\n`;
+            }
+            csv += `Gesamte Zinsen ohne Sondertilgungen und Ratenanpassungen;${berechnung.gesamtZinsenOhne.toFixed(2)} €\n`;
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'baufinanzierung.csv';
+            link.click();
+          };
+
+          return (
+            <div className="w-full max-w-7xl mx-auto p-6 bg-gradient-to-br from-blue-50 to-indigo-50 min-h-screen">
+              {showCopyNotification && (
+                <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-pulse">
+                  ✓ Link wurde in die Zwischenablage kopiert!
+                </div>
+              )}
+              
+              <div className="bg-white rounded-lg shadow-xl p-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h1 className="text-3xl font-bold text-indigo-900">Baufinanzierungsrechner</h1>
+                  <button
+                    onClick={shareViaURL}
+                    className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold flex items-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3"></circle>
+                      <circle cx="6" cy="12" r="3"></circle>
+                      <circle cx="18" cy="19" r="3"></circle>
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                    </svg>
+                    Teilen (Link kopieren)
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 p-6 bg-gray-50 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Darlehenssumme (€)
+                    </label>
+                    <input
+                      type="number"
+                      value={darlehenssumme}
+                      onChange={(e) => setDarlehenssumme(parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Zinssatz 1 (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={zinssatz1}
+                      onChange={(e) => setZinssatz1(parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Zinsbindung (Jahre)
+                    </label>
+                    <input
+                      type="number"
+                      value={zinsbindung}
+                      onChange={(e) => setZinsbindung(parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Zinssatz 2 nach Zinsbindung (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={zinssatz2}
+                      onChange={(e) => setZinssatz2(parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Tilgungsart
+                    </label>
+                    <select
+                      value={tilgungsart}
+                      onChange={(e) => setTilgungsart(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    >
+                      <option value="prozent">Tilgungssatz (%)</option>
+                      <option value="rate">Monatsrate (€)</option>
+                    </select>
+                  </div>
+
+                  {tilgungsart === 'prozent' ? (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Tilgungssatz (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={tilgungssatz}
+                        onChange={(e) => setTilgungssatz(parseFloat(e.target.value) || 0)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Monatsrate (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={monatsrate}
+                        onChange={(e) => setMonatsrate(parseFloat(e.target.value) || 0)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Startdatum
+                    </label>
+                    <input
+                      type="date"
+                      value={startdatum}
+                      onChange={(e) => setStartdatum(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-8 p-6 bg-amber-50 rounded-lg border-2 border-amber-200">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">Sondertilgungen</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <input
+                      type="month"
+                      value={neueST.datum}
+                      onChange={(e) => setNeueST({...neueST, datum: e.target.value})}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="Monat"
+                    />
+                    <input
+                      type="number"
+                      value={neueST.betrag}
+                      onChange={(e) => setNeueST({...neueST, betrag: e.target.value})}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="Betrag (€)"
+                    />
+                    <button
+                      onClick={addSondertilgung}
+                      className="bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 transition-colors font-semibold"
+                    >
+                      Hinzufügen
+                    </button>
+                  </div>
+                  {sondertilgungen.length > 0 && (
+                    <div className="space-y-2">
+                      {sondertilgungen.map((st, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border border-amber-300">
+                          <span>{new Date(st.datum + '-01').toLocaleDateString('de-DE', {month: '2-digit', year: 'numeric'})}: {st.betrag.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</span>
+                          <button
+                            onClick={() => removeSondertilgung(idx)}
+                            className="text-red-600 hover:text-red-800 font-semibold"
+                          >
+                            Entfernen
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-8 p-6 bg-blue-50 rounded-lg border-2 border-blue-200">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">Ratenanpassungen</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {tilgungsart === 'prozent' 
+                      ? 'Hinweis: Bei Tilgungssatz-Modus werden Ratenanpassungen ignoriert. Wechseln Sie zu "Monatsrate", um Raten manuell anzupassen.'
+                      : 'Passen Sie Ihre monatliche Rate zu einem beliebigen Zeitpunkt an.'}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <input
+                      type="month"
+                      value={neueRA.datum}
+                      onChange={(e) => setNeueRA({...neueRA, datum: e.target.value})}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Monat"
+                      disabled={tilgungsart === 'prozent'}
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={neueRA.neueRate}
+                      onChange={(e) => setNeueRA({...neueRA, neueRate: e.target.value})}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Neue Rate (€)"
+                      disabled={tilgungsart === 'prozent'}
+                    />
+                    <button
+                      onClick={addRatenanpassung}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      disabled={tilgungsart === 'prozent'}
+                    >
+                      Hinzufügen
+                    </button>
+                  </div>
+                  {ratenanpassungen.length > 0 && (
+                    <div className="space-y-2">
+                      {ratenanpassungen.map((ra, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border border-blue-300">
+                          <span>
+                            {new Date(ra.datum + '-01').toLocaleDateString('de-DE', {month: '2-digit', year: 'numeric'})}: 
+                            {' '}{ra.neueRate.toLocaleString('de-DE', {minimumFractionDigits: 2})} € 
+                            <span className={`ml-2 font-semibold ${ra.neueRate > berechnung.anfangsrate ? 'text-red-600' : 'text-green-600'}`}>
+                              ({ra.neueRate > berechnung.anfangsrate ? '+' : ''}{(ra.neueRate - berechnung.anfangsrate).toLocaleString('de-DE', {minimumFractionDigits: 2})} €)
+                            </span>
+                          </span>
+                          <button
+                            onClick={() => removeRatenanpassung(idx)}
+                            className="text-red-600 hover:text-red-800 font-semibold"
+                          >
+                            Entfernen
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-lg shadow-lg">
+                    <div className="text-sm opacity-90 mb-1">Darlehenssumme</div>
+                    <div className="text-2xl font-bold">{darlehenssumme.toLocaleString('de-DE')} €</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-red-500 to-red-600 text-white p-6 rounded-lg shadow-lg">
+                    <div className="text-sm opacity-90 mb-1">Gesamte Zinsen</div>
+                    <div className="text-2xl font-bold">{berechnung.gesamtZinsen.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-lg shadow-lg">
+                    <div className="text-sm opacity-90 mb-1">Gesamtaufwand</div>
+                    <div className="text-2xl font-bold">{berechnung.gesamtAufwand.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-lg shadow-lg">
+                    <div className="text-sm opacity-90 mb-1">Laufzeit</div>
+                    <div className="text-2xl font-bold">{berechnung.laufzeitJahre}J {berechnung.laufzeitMonate}M</div>
+                  </div>
+                  {berechnung.gesamtSondertilgungen > 0 && (
+                    <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-lg shadow-lg">
+                      <div className="text-sm opacity-90 mb-1">Einsparung durch Sondertilgung</div>
+                      <div className="text-xl font-bold">{berechnung.zinsersparnisSondertilgung.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</div>
+                      <div className="text-xs opacity-90 mt-1">({Math.floor(berechnung.laufzeitVerkuerzungMonate / 12)}J {berechnung.laufzeitVerkuerzungMonate % 12}M kürzer)</div>
+                    </div>
+                  )}
+                  {ratenanpassungen.length > 0 && tilgungsart === 'rate' && (
+                    <div className={`bg-gradient-to-br ${berechnung.zinsersparnisDurchRatenanpassung > 0 ? 'from-teal-500 to-cyan-600' : 'from-rose-500 to-pink-600'} text-white p-6 rounded-lg shadow-lg`}>
+                      <div className="text-sm opacity-90 mb-1">
+                        {berechnung.zinsersparnisDurchRatenanpassung > 0 ? 'Einsparung durch Monatsratenanpassung' : 'Mehrkosten durch Monatsratenanpassung'}
+                      </div>
+                      <div className="text-xl font-bold">
+                        {Math.abs(berechnung.zinsersparnisDurchRatenanpassung).toLocaleString('de-DE', {minimumFractionDigits: 2})} €
+                      </div>
+                      <div className="text-xs opacity-90 mt-1">
+                        {berechnung.zinsersparnisDurchRatenanpassung > 0 ? 'Zinsen gespart' : 'Zusätzliche Zinsen'} durch Ratenanpassung
+                      </div>
+                    </div>
+                  )}
+                  {(berechnung.gesamtSondertilgungen > 0 || (ratenanpassungen.length > 0 && tilgungsart === 'rate')) && (
+                    <div className="bg-gradient-to-br from-emerald-500 to-green-600 text-white p-6 rounded-lg shadow-lg">
+                      <div className="text-sm opacity-90 mb-1">Gesamteinsparung</div>
+                      <div className="text-2xl font-bold">
+                        {berechnung.gesamtersparnis.toLocaleString('de-DE', {minimumFractionDigits: 2})} €
+                      </div>
+                      <div className="text-xs opacity-90 mt-1">
+                        Sondertilgung + Ratenanpassung
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-6 flex gap-4">
+                  <button
+                    onClick={exportToCSV}
+                    className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors font-semibold flex items-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Als CSV exportieren
+                  </button>
+                </div>
+
+                <div className="overflow-auto max-h-96 border border-gray-300 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-indigo-600 text-white sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Monat</th>
+                        <th className="px-4 py-3 text-left">Datum</th>
+                        <th className="px-4 py-3 text-right">Zinssatz</th>
+                        <th className="px-4 py-3 text-right">Rate</th>
+                        <th className="px-4 py-3 text-right">Zinsen</th>
+                        <th className="px-4 py-3 text-right">Tilgung</th>
+                        <th className="px-4 py-3 text-right">Sondertilg.</th>
+                        <th className="px-4 py-3 text-right">Restschuld</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {berechnung.monate.map((m, idx) => (
+                        <tr 
+                          key={idx} 
+                          className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-indigo-50 transition-colors ${m.sondertilgung > 0 ? 'bg-amber-50' : ''} ${m.hatRatenanpassung ? 'bg-blue-100' : ''}`}
+                        >
+                          <td className="px-4 py-2 border-b">{m.monat}</td>
+                          <td className="px-4 py-2 border-b">{m.datum}</td>
+                          <td className="px-4 py-2 border-b text-right">{m.zinssatz.toFixed(2)}%</td>
+                          <td className="px-4 py-2 border-b text-right">{m.rate.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                          <td className="px-4 py-2 border-b text-right text-red-600">{m.zinsen.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                          <td className="px-4 py-2 border-b text-right text-green-600">{m.tilgung.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                          <td className="px-4 py-2 border-b text-right text-amber-600 font-semibold">{m.sondertilgung > 0 ? m.sondertilgung.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' €' : '-'}</td>
+                          <td className="px-4 py-2 border-b text-right font-semibold">{m.restschuld.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        ReactDOM.render(<BaufinanzierungsRechner />, document.getElementById('root'));
+    </script>
+</body>
+</html>
